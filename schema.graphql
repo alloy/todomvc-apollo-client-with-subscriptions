@@ -1,5 +1,0 @@
-type Todo {
-    id: ID!
-    value: String!
-    completed: Boolean! @search
-}

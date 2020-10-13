@@ -7,23 +7,50 @@ import {
   InMemoryCache,
   createHttpLink,
 } from "@apollo/client"
+import { setContext } from "@apollo/client/link/context"
+import { Auth0Provider, useAuth0 } from "@auth0/auth0-react"
 
-const createApolloClient = () => {
+const AuthorizedApolloProvider = ({ children }) => {
+  const { isAuthenticated, getIdTokenClaims } = useAuth0()
+
   const httpLink = createHttpLink({
-    uri: "https://urbane-powder-1224.us-west-2.aws.cloud.dgraph.io/graphql",
+    uri: process.env.REACT_APP_SLASH_GRAPHQL_ENDPOINT + "/graphql",
   })
 
-  return new ApolloClient({
-    link: httpLink,
+  const authLink = setContext(async (_, { headers }) => {
+    if (!isAuthenticated) {
+      return { headers }
+    }
+
+    const token = await getIdTokenClaims()
+
+    return {
+      headers: {
+        ...headers,
+        Authorization: token ? token.__raw : "",
+      },
+    }
+  })
+
+  const apolloClient = new ApolloClient({
+    link: authLink.concat(httpLink),
     cache: new InMemoryCache(),
   })
+
+  return <ApolloProvider client={apolloClient}>{children}</ApolloProvider>
 }
 
 ReactDOM.render(
-  <ApolloProvider client={createApolloClient()}>
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>
-  </ApolloProvider>,
+  <Auth0Provider
+    domain={process.env.REACT_APP_AUTH0_DOMAIN}
+    clientId={process.env.REACT_APP_AUTH0_CLIENT_ID}
+    redirectUri={window.location.origin}
+  >
+    <AuthorizedApolloProvider>
+      <React.StrictMode>
+        <App />
+      </React.StrictMode>
+    </AuthorizedApolloProvider>
+  </Auth0Provider>,
   document.getElementById("root")
 )

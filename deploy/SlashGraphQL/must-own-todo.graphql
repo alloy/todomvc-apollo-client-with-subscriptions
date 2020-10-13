@@ -1,0 +1,7 @@
+query($username: String!) {
+  queryTodo {
+    owner(filter: { username: { eq: $username } }) {
+      username
+    }
+  }
+}
