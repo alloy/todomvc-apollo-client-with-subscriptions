@@ -1,3 +1,5 @@
+Deployment status : [![Netlify Status](https://api.netlify.com/api/v1/badges/9e33b3f0-6d5f-4611-8ee6-40a1cdd98f3d/deploy-status)](https://app.netlify.com/sites/slash-graphql-todos/deploys)
+
 # Multi-user task-list React App powered by Slash GraphQL
 
 Task-list React App using GraphQL build by Dgraph Labs and powered by [Slash GraphQL](https://dgraph.io/slash-graphql).
