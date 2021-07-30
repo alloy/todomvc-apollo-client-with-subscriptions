@@ -60,21 +60,11 @@ const TODO_ADDED_SUBSCRIPTION = gql`
 `
 
 function App() {
-  const { loading, error, data, subscribeToMore } = useQuery(GET_TODOS)
+  const { loading, error, data, subscribeToMore: subscribeToMoreTodos } = useQuery(GET_TODOS)
   const [add] = useMutation(ADD_TODO)
   const [del] = useMutation(DELETE_TODO)
   const [upd] = useMutation(UPDATE_TODO)
   const [clear] = useMutation(CLEAR_COMPLETED_TODOS)
-
-  // useSubscription(TODO_ADDED_SUBSCRIPTION, {
-  //   onSubscriptionData: ({ client, subscriptionData }) => {
-  //     if (subscriptionData.data) {
-  //       client.cache.
-  //     } else if (subscriptionData.error) {
-  //       console.error(subscriptionData.error)
-  //     }
-  //   }
-  // })
 
   if (loading) {
     return <p>Loading</p>
@@ -83,16 +73,20 @@ function App() {
     return <p>`Error: ${error.message}`</p>
   }
 
-  subscribeToMore({
+  subscribeToMoreTodos({
     document: TODO_ADDED_SUBSCRIPTION,
     updateQuery: (prev, { subscriptionData }) => {
-      if (!subscriptionData.data) return prev;
-      console.log({ prev, subscriptionData })
+      if (!subscriptionData.data) {
+        if (subscriptionData.error) {
+          console.error(subscriptionData.error)
+        }
+        return prev;
+      }
       const todoAdded = subscriptionData.data.todoAdded;
-      // return Object.assign({}, prev, {
-      //   todos: []
-      // });
-      return [...prev.todos, todoAdded]
+      if (prev.todos.find(todo => todo.id === todoAdded.id)) {
+        return prev;
+      }
+      return { todos: [...prev.todos, todoAdded] }
     }
   })
 

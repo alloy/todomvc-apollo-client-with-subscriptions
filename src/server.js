@@ -2,91 +2,29 @@
  * Taken and adjusted from https://github.com/bluedusk/todomvc-apollo
  */
 
-const { ApolloServer, gql } = require("apollo-server-express");
 const { PubSub, withFilter } = require('graphql-subscriptions');
-
 const express = require("express");
+const { graphqlHTTP } = require("express-graphql");
 const cors = require("cors");
 const { createServer } = require('http');
 const { execute, subscribe } = require('graphql');
 const { SubscriptionServer } = require('subscriptions-transport-ws');
 const { makeExecutableSchema } = require('@graphql-tools/schema');
+const dedent = require("dedent");
 
 const pubsub = new PubSub();
 const TODO_ADDED = "TODO_ADDED";
 const TODO_CHANGED = "TODO_CHANGED";
 
-const doPublish = (todos) => {
-  pubsub.publish(TODO_CHANGED, { todos });
-};
-
-const typeDefs = gql`
-  type Query {
-    todos: [TODO!]!
-  }
-  type TODO {
-    id: ID!
-    value: String!
-    completed: Boolean!
-  }
-  type Mutation {
-    addTodo(value: String!): TODO!
-    updateTodo(id: ID!, completed: Boolean!): TODO!
-    deleteTodo(id: ID!): TODO
-    completeAll: Boolean
-    deleteCompleted: [TODO!]!
-  }
-  type Subscription {
-    todoAdded: TODO
-    todoUpdated: TODO!
-    todoDeleted: TODO!
-  }
-`;
-
-const resolvers = {
-  Query: {
-    todos: (parent, args, { Todos }) => {
-      return Todos.getTodos();
-    },
-  },
-  Mutation: {
-    addTodo: (_, { value }, { Todos }) => {
-      const todoAdded = Todos.addTodo(value);
-      pubsub.publish(TODO_ADDED, { todoAdded })
-      return todoAdded;
-    },
-    deleteTodo: (_, { id }, { Todos }) => {
-      const result = Todos.deleteTodo(id);
-      doPublish(Todos.getTodos());
-      return result;
-    },
-    updateTodo: (_, { id, completed }, { Todos }) => {
-      const result = Todos.updateTodoById(id, completed);
-      doPublish(Todos.getTodos());
-      return result;
-    },
-    deleteCompleted: (_, __, { Todos }) => {
-      const completed = Todos.deleteCompleted();
-      doPublish(Todos.getTodos());
-      return completed;
-    },
-  },
-  Subscription: {
-    todoAdded: {
-      subscribe: async () => {
-        return withFilter(pubsub.asyncIterator(TODO_ADDED), todoAdded => {
-          console.log({ todoAdded })
-          return true
-        });
-      }
-    }
-  },
+// A noop function that will allow us to syntax highlight GraphQL documents.
+function gql(template) {
+  return dedent(template);
 }
 
 /**
  * A mock datasource providing todo CRUD functionalities
  */
-class Todos {
+ class Todos {
   constructor() {
     this.id = 0;
     this.todos = [
@@ -158,62 +96,118 @@ class Todos {
   }
 }
 
-(async () => {
-  const schema = makeExecutableSchema({ typeDefs, resolvers });
-  const app = express();
-  app.use(cors());
-  const httpServer = createServer(app);
+const typeDefs = gql`
+  type Query {
+    todos: [TODO!]!
+  }
+  type TODO {
+    id: ID!
+    value: String!
+    completed: Boolean!
+  }
+  type Mutation {
+    addTodo(value: String!): TODO!
+    updateTodo(id: ID!, completed: Boolean!): TODO!
+    deleteTodo(id: ID!): TODO
+    completeAll: Boolean
+    deleteCompleted: [TODO!]!
+  }
+  type Subscription {
+    todoAdded: TODO
+    todoUpdated: TODO!
+    todoDeleted: TODO!
+  }
+`;
 
-  // The ApolloServer constructor requires two parameters: your schema
-  // definition and your set of resolvers.
-  const server = new ApolloServer({
-    schema,
-    // context: Where we "inject" our fake datasource
-    context: {
-      Todos: new Todos(),
+const resolvers = {
+  Query: {
+    todos: (parent, args, { Todos }) => {
+      return Todos.getTodos();
     },
-    // plugins(optional): A small plugin to print log when server receives request
-    // More on plugins: https://www.apollographql.com/docs/apollo-server/integrations/plugins/
-    plugins: [
-      {
-        requestDidStart(requestContext) {
-          console.log(
-            `[${new Date().toISOString()}] - Graphql operationName:  ${requestContext.request.operationName
-            }`
-          );
-        },
-      },
-    ],
-    // capture errors
-    formatError: (err) => {
-      console.log(err);
+  },
+  Mutation: {
+    addTodo: (_, { value }, { Todos }) => {
+      const todoAdded = Todos.addTodo(value);
+      pubsub.publish(TODO_ADDED, { todoAdded })
+      return todoAdded;
     },
-  });
+    deleteTodo: (_, { id }, { Todos }) => {
+      const result = Todos.deleteTodo(id);
+      // doPublish(Todos.getTodos());
+      return result;
+    },
+    updateTodo: (_, { id, completed }, { Todos }) => {
+      const result = Todos.updateTodoById(id, completed);
+      // doPublish(Todos.getTodos());
+      return result;
+    },
+    deleteCompleted: (_, __, { Todos }) => {
+      const completed = Todos.deleteCompleted();
+      // doPublish(Todos.getTodos());
+      return completed;
+    },
+  },
+  Subscription: {
+    todoAdded: {
+      subscribe: () => pubsub.asyncIterator(TODO_ADDED)
+    }
+  },
+}
 
-  await server.start();
-  server.applyMiddleware({ app });
+const schema = makeExecutableSchema({ typeDefs, resolvers });
 
-  const subscriptionServer = SubscriptionServer.create({
-    // This is the `schema` we just created.
-    schema,
-    // These are imported from `graphql`.
-    execute,
-    subscribe,
-  }, {
-    // This is the `httpServer` we created in a previous step.
-    server: httpServer,
-    // This `server` is the instance returned from `new ApolloServer`.
-    path: server.graphqlPath,
-  });
+const app = express();
+app.use(cors());
+app.use(
+  "/graphql",
+  graphqlHTTP({
+    schema: schema,
+    context: { Todos: new Todos() },
+    graphiql: {
+      subscriptionEndpoint: "ws://localhost:4000/subscriptions",
+      defaultQuery: gql`
+        query ToDosQuery {
+          toDos {
+            __typename
+            id
+            title
+          }
+        }
 
-  // Shut down in the case of interrupt and termination signals
-  // We expect to handle this more cleanly in the future. See (#5074)[https://github.com/apollographql/apollo-server/issues/5074] for reference.
-  ['SIGINT', 'SIGTERM'].forEach(signal => {
-    process.on(signal, () => subscriptionServer.close());
-  });
+        # mutation CreateToDoMutation($title: String) {
+        #   createToDo(title: $title) {
+        #     __typename
+        #     title
+        #     id
+        #   }
+        # }
 
-  // The `listen` method launches a web server at localhost:4000.
-  httpServer.listen(4000)
-  // console.log(`🚀 Server ready at ${url}`);
-  // console.log(`🚀 Subscriptions ready at ${subscriptionsUrl}`);
-})();
+        # subscription ToDoCreatedSubscription {
+        #   toDoCreated {
+        #     __typename
+        #     id
+        #     title
+        #   }
+        # }
+      `,
+    },
+  })
+);
+
+const server = createServer(app);
+server.listen(4000, () => {
+  console.log(`🚀 GraphQL server is now running at http://localhost:4000`);
+
+  // Set up the WebSocket for handling GraphQL subscriptions.
+  new SubscriptionServer(
+    {
+      execute,
+      subscribe,
+      schema,
+    },
+    {
+      server,
+      path: "/subscriptions",
+    }
+  );
+});
