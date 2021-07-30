@@ -1,5 +1,5 @@
 import React from "react"
-import { useQuery, useMutation, gql } from "@apollo/client"
+import { useQuery, useMutation, gql, useSubscription } from "@apollo/client"
 import { Todos } from "react-todomvc"
 
 import "react-todomvc/dist/todomvc.css"
@@ -49,12 +49,32 @@ const CLEAR_COMPLETED_TODOS = gql`
   }
 `
 
+const TODO_ADDED_SUBSCRIPTION = gql`
+  subscription TodoAddedSubscription {
+    todoAdded {
+      id
+      value
+      completed
+    }
+  }
+`
+
 function App() {
-  const { loading, error, data } = useQuery(GET_TODOS)
+  const { loading, error, data, subscribeToMore } = useQuery(GET_TODOS)
   const [add] = useMutation(ADD_TODO)
   const [del] = useMutation(DELETE_TODO)
   const [upd] = useMutation(UPDATE_TODO)
   const [clear] = useMutation(CLEAR_COMPLETED_TODOS)
+
+  // useSubscription(TODO_ADDED_SUBSCRIPTION, {
+  //   onSubscriptionData: ({ client, subscriptionData }) => {
+  //     if (subscriptionData.data) {
+  //       client.cache.
+  //     } else if (subscriptionData.error) {
+  //       console.error(subscriptionData.error)
+  //     }
+  //   }
+  // })
 
   if (loading) {
     return <p>Loading</p>
@@ -62,6 +82,19 @@ function App() {
   if (error) {
     return <p>`Error: ${error.message}`</p>
   }
+
+  subscribeToMore({
+    document: TODO_ADDED_SUBSCRIPTION,
+    updateQuery: (prev, { subscriptionData }) => {
+      if (!subscriptionData.data) return prev;
+      console.log({ prev, subscriptionData })
+      const todoAdded = subscriptionData.data.todoAdded;
+      // return Object.assign({}, prev, {
+      //   todos: []
+      // });
+      return [...prev.todos, todoAdded]
+    }
+  })
 
   const addNewTodo = (value) =>
     add({
