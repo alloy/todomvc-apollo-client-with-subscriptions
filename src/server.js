@@ -2,7 +2,7 @@
  * Taken and adjusted from https://github.com/bluedusk/todomvc-apollo
  */
 
-const { PubSub, withFilter } = require('graphql-subscriptions');
+const { PubSub } = require('graphql-subscriptions');
 const express = require("express");
 const { graphqlHTTP } = require("express-graphql");
 const cors = require("cors");
@@ -14,7 +14,7 @@ const dedent = require("dedent");
 
 const pubsub = new PubSub();
 const TODO_ADDED = "TODO_ADDED";
-const TODO_CHANGED = "TODO_CHANGED";
+const TODO_UPDATED = "TODO_UPDATED";
 
 // A noop function that will allow us to syntax highlight GraphQL documents.
 function gql(template) {
@@ -45,10 +45,6 @@ function gql(template) {
     return this.todos;
   }
 
-  setTodos(todos) {
-    this.todos = todos;
-  }
-
   addTodo(todoText, completed = false) {
     const todo = {
       id: String(this.id++),
@@ -68,24 +64,23 @@ function gql(template) {
   }
 
   updateTodoById(id, completed) {
-    let result;
-    this.todos.forEach((todo) => {
-      if (todo.id === id) {
-        todo.completed = completed;
-      }
-      result = todo;
-    });
-
-    return result;
+    const todo = this.todos.find(t => t.id === id);
+    if (todo) {
+      todo.completed = completed;
+    }
+    return todo;
   }
+
   deleteAll() {
     this.todos = [];
   }
+
   deleteCompleted() {
     const completed = this.todos.filter(({ completed }) => completed);
     this.todos = this.todos.filter(({ completed }) => !completed);
     return completed;
   }
+
   completeAll() {
     this.todos = [...this.todos].map((todo) => {
       return {
@@ -137,9 +132,11 @@ const resolvers = {
       return result;
     },
     updateTodo: (_, { id, completed }, { Todos }) => {
-      const result = Todos.updateTodoById(id, completed);
-      // doPublish(Todos.getTodos());
-      return result;
+      const todoUpdated = Todos.updateTodoById(id, completed);
+      if (todoUpdated) {
+        pubsub.publish(TODO_UPDATED, { todoUpdated })
+      }
+      return todoUpdated;
     },
     deleteCompleted: (_, __, { Todos }) => {
       const completed = Todos.deleteCompleted();
@@ -150,6 +147,9 @@ const resolvers = {
   Subscription: {
     todoAdded: {
       subscribe: () => pubsub.asyncIterator(TODO_ADDED)
+    },
+    todoUpdated: {
+      subscribe: () => pubsub.asyncIterator(TODO_UPDATED)
     }
   },
 }

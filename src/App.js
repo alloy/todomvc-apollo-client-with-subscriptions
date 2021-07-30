@@ -59,6 +59,16 @@ const TODO_ADDED_SUBSCRIPTION = gql`
   }
 `
 
+const TODO_UPDATED_SUBSCRIPTION = gql`
+  subscription TodoUpdatedSubscription {
+    todoUpdated {
+      id
+      value
+      completed
+    }
+  }
+`
+
 function App() {
   const { loading, error, data } = useQuery(GET_TODOS)
   const [add] = useMutation(ADD_TODO)
@@ -83,6 +93,25 @@ function App() {
             },
           })
         }
+      }
+    }
+  })
+
+  useSubscription(TODO_UPDATED_SUBSCRIPTION, {
+    // Explicitly update the store when a todo has been added.
+    onSubscriptionData: ({ client: { cache }, subscriptionData }) => {
+      if (subscriptionData.error) {
+        console.error(subscriptionData.error)
+      } else {
+        const todoUpdated = subscriptionData.data.todoUpdated;
+        console.log({todoUpdated})
+        cache.modify({
+          id: cache.identify(todoUpdated),
+          fields: {
+            value: () => todoUpdated.value,
+            completed: () => todoUpdated.completed,
+          },
+        })
       }
     }
   })
