@@ -36,7 +36,7 @@ function gql(template) {
       },
       {
         id: this.id++,
-        value: "Beat US women soccer team",
+        value: "Finish prep work for GraphQL talk",
         completed: true
       }
     ];
