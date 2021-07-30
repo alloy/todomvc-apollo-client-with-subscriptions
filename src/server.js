@@ -15,6 +15,7 @@ const dedent = require("dedent");
 const pubsub = new PubSub();
 const TODO_ADDED = "TODO_ADDED";
 const TODO_UPDATED = "TODO_UPDATED";
+const TODO_DELETED = "TODO_DELETED";
 
 // A noop function that will allow us to syntax highlight GraphQL documents.
 function gql(template) {
@@ -127,9 +128,11 @@ const resolvers = {
       return todoAdded;
     },
     deleteTodo: (_, { id }, { Todos }) => {
-      const result = Todos.deleteTodo(id);
-      // doPublish(Todos.getTodos());
-      return result;
+      const todoDeleted = Todos.deleteTodo(id);
+      if (todoDeleted) {
+        pubsub.publish(TODO_DELETED, { todoDeleted });
+      }
+      return todoDeleted;
     },
     updateTodo: (_, { id, completed }, { Todos }) => {
       const todoUpdated = Todos.updateTodoById(id, completed);
@@ -140,7 +143,9 @@ const resolvers = {
     },
     deleteCompleted: (_, __, { Todos }) => {
       const completed = Todos.deleteCompleted();
-      // doPublish(Todos.getTodos());
+      completed.forEach(todoDeleted => {
+        pubsub.publish(TODO_DELETED, { todoDeleted });
+      })
       return completed;
     },
   },
@@ -150,6 +155,9 @@ const resolvers = {
     },
     todoUpdated: {
       subscribe: () => pubsub.asyncIterator(TODO_UPDATED)
+    },
+    todoDeleted: {
+      subscribe: () => pubsub.asyncIterator(TODO_DELETED)
     }
   },
 }
@@ -166,27 +174,42 @@ app.use(
     graphiql: {
       subscriptionEndpoint: "ws://localhost:4000/subscriptions",
       defaultQuery: gql`
-        query ToDosQuery {
-          toDos {
-            __typename
+        query AllTodosQuery {
+          todos {
             id
-            title
+            value
+            completed
           }
         }
 
-        # mutation CreateToDoMutation($title: String) {
-        #   createToDo(title: $title) {
-        #     __typename
-        #     title
+        # mutation AddTodoMutation($value: String!) {
+        #   addTodo(value: $value) {
         #     id
+        #     value
+        #     completed
         #   }
         # }
 
-        # subscription ToDoCreatedSubscription {
-        #   toDoCreated {
-        #     __typename
+        # mutation UpdateTodoMutation($id: ID!, $completed: Boolean!) {
+        #   updateTodo(id: $id, completed: $completed) {
         #     id
-        #     title
+        #     completed
+        #   }
+        # }
+
+        # subscription TodoAddedSubscription {
+        #   todoAdded {
+        #     id
+        #     value
+        #     completed
+        #   }
+        # }
+
+        # subscription TodoUpdatedSubscription {
+        #   todoUpdated {
+        #     id
+        #     value
+        #     completed
         #   }
         # }
       `,

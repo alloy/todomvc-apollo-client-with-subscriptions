@@ -69,6 +69,14 @@ const TODO_UPDATED_SUBSCRIPTION = gql`
   }
 `
 
+const TODO_DELETED_SUBSCRIPTION = gql`
+  subscription TodoDeletedSubscription {
+    todoDeleted {
+      id
+    }
+  }
+`
+
 function App() {
   const { loading, error, data } = useQuery(GET_TODOS)
   const [add] = useMutation(ADD_TODO)
@@ -76,6 +84,26 @@ function App() {
   const [upd] = useMutation(UPDATE_TODO)
   const [clear] = useMutation(CLEAR_COMPLETED_TODOS)
 
+  useSubscription(TODO_UPDATED_SUBSCRIPTION, {
+    // Explicitly update the store when a todo has been added.
+    // This is unnecessary in case of following the Global Object Identification spec.
+    onSubscriptionData: ({ client: { cache }, subscriptionData }) => {
+      if (subscriptionData.error) {
+        console.error(subscriptionData.error)
+      } else {
+        const todoUpdated = subscriptionData.data.todoUpdated;
+        cache.modify({
+          id: cache.identify(todoUpdated),
+          fields: {
+            value: () => todoUpdated.value,
+            completed: () => todoUpdated.completed,
+          },
+        })
+      }
+    }
+  })
+
+  // Add to list
   useSubscription(TODO_ADDED_SUBSCRIPTION, {
     onSubscriptionData: ({ client: { cache }, subscriptionData }) => {
       if (subscriptionData.error) {
@@ -97,21 +125,14 @@ function App() {
     }
   })
 
-  useSubscription(TODO_UPDATED_SUBSCRIPTION, {
-    // Explicitly update the store when a todo has been added.
+  // Remove from list
+  useSubscription(TODO_DELETED_SUBSCRIPTION, {
     onSubscriptionData: ({ client: { cache }, subscriptionData }) => {
       if (subscriptionData.error) {
         console.error(subscriptionData.error)
       } else {
-        const todoUpdated = subscriptionData.data.todoUpdated;
-        console.log({todoUpdated})
-        cache.modify({
-          id: cache.identify(todoUpdated),
-          fields: {
-            value: () => todoUpdated.value,
-            completed: () => todoUpdated.completed,
-          },
-        })
+        const todoDeleted = subscriptionData.data.todoDeleted;
+        cache.evict({ id: cache.identify(todoDeleted) })
       }
     }
   })
@@ -130,15 +151,14 @@ function App() {
       },
       update(cache, { data }) {
         const existing = cache.readQuery({ query: GET_TODOS })
-        cache.writeQuery({
-          query: GET_TODOS,
-          data: {
-            todos: [
-              ...(existing ? existing.todos : []),
-              data.addTodo,
-            ],
-          },
-        })
+        if (!existing.todos.find(todo => todo.id === data.addTodo.id)) {
+          cache.writeQuery({
+            query: GET_TODOS,
+            data: {
+              todos: [...existing.todos, data.addTodo],
+            },
+          })
+        }
       },
     })
 
@@ -148,6 +168,8 @@ function App() {
         id: modifiedTodo.id,
         completed: modifiedTodo.completed,
       },
+      // Explicitly update the store with the updated completion status.
+      // This is unnecessary in case of following the Global Object Identification spec.
       update(cache, { data }) {
         cache.modify({
           id: cache.identify(data.updateTodo),
