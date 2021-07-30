@@ -1,7 +1,6 @@
 import React from "react"
 import { useQuery, useMutation, gql } from "@apollo/client"
 import { Todos } from "react-todomvc"
-import { useAuth0 } from "@auth0/auth0-react"
 
 import "react-todomvc/dist/todomvc.css"
 
@@ -66,38 +65,6 @@ function App() {
   const [upd] = useMutation(UPDATE_TODO)
   const [clear] = useMutation(CLEAR_COMPLETED_TODOS)
 
-  const {
-    auth0IsLoading,
-    auth0Error,
-    isAuthenticated,
-    loginWithRedirect,
-    logout,
-    user,
-  } = useAuth0()
-  if (auth0IsLoading) {
-    return <p>Auth0 is starting</p>
-  }
-  if (auth0Error) {
-    return <div>Oops Auth0 didn't start: {error.message}</div>
-  }
-
-  const logInOut = !isAuthenticated ? (
-    <p>
-      <button onClick={loginWithRedirect}>Log in</button> to use the app.
-    </p>
-  ) : (
-    <p>
-      <button
-        onClick={() => {
-          logout({ returnTo: window.location.origin })
-        }}
-      >
-        Log out
-      </button>{" "}
-      once you are finished, {user.email}.
-    </p>
-  )
-
   if (loading) {
     return <p>Loading</p>
   }
@@ -111,7 +78,7 @@ function App() {
         todo: {
           value: value,
           completed: false,
-          owner: { username: user.email },
+          owner: { username: "Anonymous" },
         },
       },
       update(cache, { data }) {
@@ -175,7 +142,6 @@ function App() {
         clearCompletedTodos={clearCompletedTodos}
         todosTitle="GraphQL Todos"
       />
-      {logInOut}
     </div>
   )
 }
