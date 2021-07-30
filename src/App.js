@@ -5,8 +5,8 @@ import { Todos } from "react-todomvc"
 import "react-todomvc/dist/todomvc.css"
 
 const GET_TODOS = gql`
-  query {
-    queryTodo {
+  query AllTodosQuery {
+    todos {
       id
       value
       completed
@@ -15,45 +15,36 @@ const GET_TODOS = gql`
 `
 
 const ADD_TODO = gql`
-  mutation addTodo($todo: AddTodoInput!) {
-    addTodo(input: [$todo]) {
-      todo {
-        id
-        value
-        completed
-      }
+  mutation AddTodoMutation($value: String!) {
+    addTodo(value: $value) {
+      id
+      value
+      completed
     }
   }
 `
 
 const UPDATE_TODO = gql`
-  mutation updateTodo($id: ID!, $todo: TodoPatch!) {
-    updateTodo(input: { filter: { id: [$id] }, set: $todo }) {
-      todo {
-        id
-        value
-        completed
-      }
+  mutation UpdateTodoMutation($id: ID!, $completed: Boolean!) {
+    updateTodo(id: $id, completed: $completed) {
+      id
+      completed
     }
   }
 `
 
 const DELETE_TODO = gql`
-  mutation deleteTodo($id: ID!) {
-    deleteTodo(filter: { id: [$id] }) {
-      todo {
-        id
-      }
+  mutation DeleteTodoMutation($id: ID!) {
+    deleteTodo(id: $id) {
+      id
     }
   }
 `
 
 const CLEAR_COMPLETED_TODOS = gql`
-  mutation updateTodo {
-    deleteTodo(filter: { completed: true }) {
-      todo {
-        id
-      }
+  mutation ClearCompletedTodosMutation {
+    deleteCompleted {
+      id
     }
   }
 `
@@ -75,20 +66,16 @@ function App() {
   const addNewTodo = (value) =>
     add({
       variables: {
-        todo: {
-          value: value,
-          completed: false,
-          owner: { username: "Anonymous" },
-        },
+        value: value,
       },
       update(cache, { data }) {
         const existing = cache.readQuery({ query: GET_TODOS })
         cache.writeQuery({
           query: GET_TODOS,
           data: {
-            queryTodo: [
-              ...(existing ? existing.queryTodo : []),
-              ...data.addTodo.todo,
+            todos: [
+              ...(existing ? existing.todos : []),
+              data.addTodo,
             ],
           },
         })
@@ -99,21 +86,16 @@ function App() {
     upd({
       variables: {
         id: modifiedTodo.id,
-        todo: {
-          value: modifiedTodo.value,
-          completed: modifiedTodo.completed,
-        },
+        completed: modifiedTodo.completed,
       },
       update(cache, { data }) {
-        data.updateTodo.todo.map((t) =>
-          cache.modify({
-            id: cache.identify(t),
-            fields: {
-              value: () => t.value,
-              completed: () => t.completed,
-            },
-          })
-        )
+        cache.modify({
+          id: cache.identify(data.updateTodo),
+          fields: {
+            value: () => data.updateTodo.value,
+            completed: () => data.updateTodo.completed,
+          },
+        })
       },
     })
 
@@ -121,21 +103,23 @@ function App() {
     del({
       variables: { id },
       update(cache, { data }) {
-        data.deleteTodo.todo.map((t) => cache.evict({ id: cache.identify(t) }))
+        cache.evict({ id: cache.identify(data.deleteTodo) })
       },
     })
 
   const clearCompletedTodos = () =>
     clear({
       update(cache, { data }) {
-        data.deleteTodo.todo.map((t) => cache.evict({ id: cache.identify(t) }))
+        data.deleteCompleted.forEach(todo => {
+          cache.evict({ id: cache.identify(todo) })
+        })
       },
     })
 
   return (
     <div>
       <Todos
-        todos={data.queryTodo}
+        todos={data.todos}
         addNewTodo={addNewTodo}
         updateTodo={updateTodo}
         deleteTodo={deleteTodo}
